@@ -6,7 +6,7 @@ type Provider = "groq" | "gemini";
 
 const GROQ_MODEL = process.env.GROQ_CHAT_MODEL ?? "openai/gpt-oss-120b";
 const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-3.5-flash-lite";
-const TIMEOUT_MS = 12_000;
+const DEFAULT_TIMEOUT_MS = 12_000;
 
 export class LlmError extends Error {}
 
@@ -15,9 +15,19 @@ export interface JsonRequest {
   user: string;
   maxTokens?: number;
   temperature?: number;
+  timeoutMs?: number;
+  /** Reasoning depth for models that support it; "low" is fastest. */
+  reasoningEffort?: "low" | "medium" | "high";
 }
 
-async function callGroq({ system, user, maxTokens = 800, temperature = 0.8 }: JsonRequest) {
+async function callGroq({
+  system,
+  user,
+  maxTokens = 800,
+  temperature = 0.8,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  reasoningEffort = "low",
+}: JsonRequest) {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) throw new LlmError("GROQ_API_KEY is not set");
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -31,18 +41,24 @@ async function callGroq({ system, user, maxTokens = 800, temperature = 0.8 }: Js
       ],
       response_format: { type: "json_object" },
       // gpt-oss models reason before answering; "low" keeps latency around a second.
-      ...(GROQ_MODEL.startsWith("openai/gpt-oss") ? { reasoning_effort: "low" } : {}),
+      ...(GROQ_MODEL.startsWith("openai/gpt-oss") ? { reasoning_effort: reasoningEffort } : {}),
       max_completion_tokens: maxTokens,
       temperature,
     }),
-    signal: AbortSignal.timeout(TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) throw new LlmError(`Groq ${response.status}: ${(await response.text()).slice(0, 300)}`);
   const data = (await response.json()) as { choices?: { message?: { content?: string } }[] };
   return data.choices?.[0]?.message?.content ?? "";
 }
 
-async function callGemini({ system, user, maxTokens = 800, temperature = 0.8 }: JsonRequest) {
+async function callGemini({
+  system,
+  user,
+  maxTokens = 800,
+  temperature = 0.8,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+}: JsonRequest) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new LlmError("GEMINI_API_KEY is not set");
   const response = await fetch(
@@ -59,7 +75,7 @@ async function callGemini({ system, user, maxTokens = 800, temperature = 0.8 }: 
           temperature,
         },
       }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     },
   );
   if (!response.ok) throw new LlmError(`Gemini ${response.status}: ${(await response.text()).slice(0, 300)}`);

@@ -3,7 +3,7 @@ import type { CategoryScore } from "@/lib/types";
 
 function barColor(score: number) {
   if (score >= 75) return "bg-emerald-500";
-  if (score >= 65) return "bg-amber-500";
+  if (score >= 60) return "bg-amber-500";
   return "bg-rose-500";
 }
 
@@ -25,6 +25,9 @@ export function CategoryCard({ category }: { category: CategoryScore }) {
         <div className={`h-2 rounded-full ${barColor(category.score)}`} style={{ width: `${category.score}%` }} />
       </div>
 
+      {category.evidence.length === 0 && (
+        <p className="mt-4 text-sm text-muted">No direct quote available for this category.</p>
+      )}
       {category.evidence.map((e) => (
         <figure key={e.quote} className="mt-4">
           <blockquote className="border-l-2 border-accent pl-3 text-sm italic">“{e.quote}”</blockquote>

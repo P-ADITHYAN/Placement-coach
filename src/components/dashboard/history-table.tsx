@@ -41,7 +41,7 @@ export function HistoryTable({ sessions }: { sessions: SessionSummary[] }) {
               <td className="py-3 pr-4 font-semibold tabular-nums">{s.overallScore}</td>
               <td className="py-3 pr-4 text-muted">{getRubricCategory(s.weakestCategoryId)?.name}</td>
               <td className="py-3 text-right">
-                <Link href="/gd/report" className="text-accent hover:underline">
+                <Link href="/gd/report?sample=1" className="text-accent hover:underline">
                   View
                 </Link>
               </td>

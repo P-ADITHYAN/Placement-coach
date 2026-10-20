@@ -1,12 +1,13 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PERSONAS } from "@/lib/ai/personas";
 import { requestAiTurn } from "@/lib/ai/respond-client";
 import { requestTranscription } from "@/lib/audio/transcribe-client";
 import { RecorderError, type RecorderErrorKind, SILENCE_LEVEL, useRecorder } from "@/lib/audio/use-recorder";
 import { useSpeech } from "@/lib/audio/use-speech";
+import { saveSession } from "@/lib/session/local-session";
 import type { Difficulty, GdTopic, GdTurn, PersonaId, RespondReason } from "@/lib/types";
 import { MAX_TURN_SECONDS, MIN_AUDIO_BYTES } from "@/lib/validation/audio";
 import { MicControl, type MicState } from "./mic-control";
@@ -65,6 +66,7 @@ export function GdRoom({
   const [speaking, setSpeaking] = useState<PersonaId | null>(null);
   const [voiceOn, setVoiceOn] = useState(true);
   const [turns, setTurns] = useState<GdTurn[]>([]);
+  const router = useRouter();
   const recorder = useRecorder();
   const speech = useSpeech(voiceOn);
 
@@ -224,6 +226,19 @@ export function GdRoom({
     setMic("idle");
   }
 
+  function openReport() {
+    const id = crypto.randomUUID();
+    saveSession({
+      id,
+      topicId: topic.id,
+      difficulty,
+      durationMinutes,
+      endedAt: new Date().toISOString(),
+      turns: turnsRef.current,
+    });
+    router.push(`/gd/report?session=${id}`);
+  }
+
   function toggleVoice() {
     if (voiceOn) speech.cancel();
     setVoiceOn((v) => !v);
@@ -362,12 +377,13 @@ export function GdRoom({
                   You made {studentTurns} contribution{studentTurns === 1 ? "" : "s"} in {turns.length} total
                   turns.
                 </p>
-                <Link
-                  href={`/gd/report?topic=${topic.id}`}
-                  className="inline-block rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                <button
+                  type="button"
+                  onClick={openReport}
+                  className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                 >
                   View your report
-                </Link>
+                </button>
               </div>
             )}
           </div>

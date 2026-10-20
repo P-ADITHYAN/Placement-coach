@@ -70,8 +70,19 @@ export interface SpeechMetrics {
   wordsSpoken: number;
   speakingRateWpm: number;
   fillerWords: number;
+  fillerBreakdown: Record<string, number>;
   turnCount: number;
   averageTurnSeconds: number;
+  /** Student's share of all words spoken in the GD. */
+  talkSharePercent: number;
+  /** Phrases the student repeated across different turns. */
+  repeatedPhrases: string[];
+}
+
+export interface ImprovedExample {
+  original: string;
+  improved: string;
+  why: string;
 }
 
 export interface GdReport {
@@ -80,9 +91,25 @@ export interface GdReport {
   overallScore: number;
   metrics: SpeechMetrics;
   categories: CategoryScore[];
+  strengths: string[];
   priorityImprovements: string[];
+  improvedExample: ImprovedExample | null;
   practiceTask: string;
   rubricVersion: string;
+  /** Too little student speech for the scores to mean much. */
+  limitedEvidence: boolean;
+  /** Model-cited quotes removed because they weren't in the transcript. */
+  droppedQuotes: number;
+}
+
+/** A finished GD, as handed from the discussion room to the report. */
+export interface GdSessionRecord {
+  id: string;
+  topicId: string;
+  difficulty: Difficulty;
+  durationMinutes: number;
+  endedAt: string;
+  turns: GdTurn[];
 }
 
 export interface SessionSummary {

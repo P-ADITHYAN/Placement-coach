@@ -78,17 +78,28 @@ export const MOCK_REPORT: GdReport = {
     wordsSpoken: 312,
     speakingRateWpm: 138,
     fillerWords: 9,
+    fillerBreakdown: { like: 4, basically: 2, um: 3 },
     turnCount: 5,
     averageTurnSeconds: 27,
+    talkSharePercent: 31,
+    repeatedPhrases: [],
   },
   categories,
+  strengths: ["Used a concrete example (UPI adoption)", "Acknowledged other participants by name"],
   priorityImprovements: [
     "Support every claim with a reason and an example",
     "Reduce filler words ('like', 'basically', 'um')",
   ],
+  improvedExample: {
+    original: "Um, I feel like, basically, the cost point is important, like, for small businesses especially.",
+    improved: "Cost matters most for small businesses, because even a small transaction fee eats into thin margins.",
+    why: "States the claim directly, adds the reason, and drops the fillers.",
+  },
   practiceTask:
     "Retry the same topic and make each contribution follow: claim → reason → example, in under 25 seconds.",
   rubricVersion: RUBRIC_VERSION,
+  limitedEvidence: false,
+  droppedQuotes: 0,
 };
 
 export const MOCK_HISTORY: SessionSummary[] = [
