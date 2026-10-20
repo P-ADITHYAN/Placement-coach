@@ -10,6 +10,29 @@ export interface Persona {
   tests: string;
   /** Tailwind classes for the persona's accent (avatar + speaking ring). */
   accent: { avatar: string; ring: string };
+  /** Speaking-style instructions given to the language model. */
+  style: string;
+  /** Browser text-to-speech preferences. */
+  voice: { gender: "female" | "male"; pitch: number; rate: number };
+}
+
+export type AiIntent = "open" | "build" | "challenge" | "counter" | "invite" | "synthesize" | "summarize";
+
+/** Why the client is asking for an AI turn. */
+export type RespondReason = "student-turn" | "silence" | "closing";
+
+export interface RespondRequest {
+  topicId: string;
+  difficulty: Difficulty;
+  remainingSeconds: number;
+  reason: RespondReason;
+  turns: Pick<GdTurn, "speakerType" | "personaId" | "text">[];
+}
+
+export interface RespondResponse {
+  personaId: PersonaId;
+  intent: AiIntent;
+  text: string;
 }
 
 export interface GdTopic {

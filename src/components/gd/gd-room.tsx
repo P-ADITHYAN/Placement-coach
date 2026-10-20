@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PERSONAS } from "@/lib/ai/personas";
+import { requestAiTurn } from "@/lib/ai/respond-client";
 import { requestTranscription } from "@/lib/audio/transcribe-client";
 import { RecorderError, type RecorderErrorKind, SILENCE_LEVEL, useRecorder } from "@/lib/audio/use-recorder";
-import { MOCK_AI_LINES, MOCK_SPEAKER_ORDER } from "@/lib/mock/discussion";
-import type { Difficulty, GdTopic, GdTurn, PersonaId } from "@/lib/types";
+import { useSpeech } from "@/lib/audio/use-speech";
+import type { Difficulty, GdTopic, GdTurn, PersonaId, RespondReason } from "@/lib/types";
 import { MAX_TURN_SECONDS, MIN_AUDIO_BYTES } from "@/lib/validation/audio";
 import { MicControl, type MicState } from "./mic-control";
 import { ParticipantCard } from "./participant-card";
@@ -15,8 +16,13 @@ import { TranscriptPanel } from "./transcript-panel";
 const PREP_SECONDS = 20;
 const AI_OPENS_AFTER_SECONDS = 15;
 const CLOSING_WINDOW_SECONDS = 30;
-// Mock latency standing in for AI generation + speech until the orchestrator exists.
-const MOCK_AI_SPEAK_MS = 1800;
+// An AI participant gives one closing synthesis once this little time is left.
+const AI_CLOSING_AT_SECONDS = 40;
+// How long the floor stays open for the student before an AI participant continues.
+const SILENCE_CONTINUE_SECONDS: Record<Difficulty, number> = { easy: 14, medium: 10, hard: 7 };
+// After this many AI turns in a row, wait for the student instead of continuing.
+const MAX_AI_TURNS_WITHOUT_STUDENT = 3;
+const MAX_AI_FAILURES = 2;
 
 const MIC_ERRORS: Record<RecorderErrorKind, string> = {
   unsupported: "Your browser can't record audio. Please use a recent version of Chrome, Edge or Firefox.",
@@ -30,6 +36,12 @@ function formatClock(totalSeconds: number) {
   const m = Math.floor(totalSeconds / 60);
   const s = totalSeconds % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function aiTurnsSinceStudent(turns: GdTurn[]) {
+  let count = 0;
+  for (let i = turns.length - 1; i >= 0 && turns[i].speakerType === "ai"; i--) count++;
+  return count;
 }
 
 export function GdRoom({
@@ -48,21 +60,30 @@ export function GdRoom({
   const [mic, setMic] = useState<MicState>("idle");
   const [recordingStartedAt, setRecordingStartedAt] = useState(0);
   const [micError, setMicError] = useState<string | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   const [speaking, setSpeaking] = useState<PersonaId | null>(null);
+  const [voiceOn, setVoiceOn] = useState(true);
   const [turns, setTurns] = useState<GdTurn[]>([]);
   const recorder = useRecorder();
+  const speech = useSpeech(voiceOn);
 
-  const discussionSeconds = Math.max(0, clock - PREP_SECONDS);
-  const remaining = Math.max(0, durationMinutes * 60 - discussionSeconds);
+  const totalSeconds = durationMinutes * 60;
+  const remaining = Math.max(0, totalSeconds - Math.max(0, clock - PREP_SECONDS));
   const finished = endedEarly || remaining === 0;
   const phase = finished ? "finished" : clock < PREP_SECONDS ? "preparing" : "active";
   const elapsed = clock - recordingStartedAt;
+  const inClosing = phase === "active" && remaining <= AI_CLOSING_AT_SECONDS;
 
   const timeouts = useRef<number[]>([]);
   const clockRef = useRef(0);
   const finishedRef = useRef(false);
   const recordingToken = useRef(0);
-  const aiTurnCount = useRef(0);
+  // Source of truth for the transcript inside async callbacks.
+  const turnsRef = useRef<GdTurn[]>([]);
+  const aiBusyRef = useRef(false);
+  const aiFailures = useRef(0);
+  const closingDone = useRef(false);
 
   useEffect(() => {
     if (finished) return;
@@ -81,8 +102,9 @@ export function GdRoom({
     if (finished) {
       recordingToken.current++;
       recorder.cancel();
+      speech.cancel();
     }
-  }, [finished, recorder]);
+  }, [finished, recorder, speech]);
 
   useEffect(() => {
     const pending = timeouts.current;
@@ -94,26 +116,52 @@ export function GdRoom({
   }, []);
 
   const addTurn = useCallback((turn: Omit<GdTurn, "turnNumber">) => {
-    setTurns((prev) => [...prev, { ...turn, turnNumber: prev.length + 1 }]);
+    const next = [...turnsRef.current, { ...turn, turnNumber: turnsRef.current.length + 1 }];
+    turnsRef.current = next;
+    setTurns(next);
   }, []);
 
-  const aiRespond = useCallback(() => {
-    const n = aiTurnCount.current++;
-    const personaId = MOCK_SPEAKER_ORDER[n % MOCK_SPEAKER_ORDER.length];
-    const lines = MOCK_AI_LINES[personaId];
-    const text = lines[Math.floor(n / MOCK_SPEAKER_ORDER.length) % lines.length];
-    setSpeaking(personaId);
-    schedule(() => {
-      setSpeaking(null);
-      if (finishedRef.current) return;
-      addTurn({
-        speakerType: "ai",
-        personaId,
-        text,
-        durationSeconds: Math.round(text.split(/\s+/).length / 2.5),
-      });
-    }, MOCK_AI_SPEAK_MS);
-  }, [addTurn, schedule]);
+  const remainingNow = useCallback(
+    () => Math.max(0, totalSeconds - Math.max(0, clockRef.current - PREP_SECONDS)),
+    [totalSeconds],
+  );
+
+  const aiRespond = useCallback(
+    async (reason: RespondReason) => {
+      if (aiBusyRef.current || finishedRef.current) return;
+      aiBusyRef.current = true;
+      setAiBusy(true);
+      if (reason === "closing") closingDone.current = true;
+      try {
+        const reply = await requestAiTurn({
+          topicId: topic.id,
+          difficulty,
+          remainingSeconds: remainingNow(),
+          reason,
+          turns: turnsRef.current.map(({ speakerType, personaId, text }) => ({ speakerType, personaId, text })),
+        });
+        aiFailures.current = 0;
+        setAiError(null);
+        if (finishedRef.current) return;
+        addTurn({
+          speakerType: "ai",
+          personaId: reply.personaId,
+          text: reply.text,
+          durationSeconds: Math.round(reply.text.split(/\s+/).length / 2.5),
+        });
+        setSpeaking(reply.personaId);
+        await speech.speak(reply.personaId, reply.text);
+      } catch (error) {
+        aiFailures.current++;
+        setAiError(error instanceof Error ? error.message : "The AI participants couldn't respond.");
+      } finally {
+        setSpeaking(null);
+        aiBusyRef.current = false;
+        setAiBusy(false);
+      }
+    },
+    [addTurn, difficulty, remainingNow, speech, topic.id],
+  );
 
   const submitTurn = useCallback(
     async (recordedSeconds: number) => {
@@ -136,13 +184,16 @@ export function GdRoom({
         const spoken = Math.min(durationSeconds ?? recordedSeconds, recordedSeconds);
         addTurn({ speakerType: "student", text, durationSeconds: Math.max(1, Math.round(spoken)) });
         setMic("idle");
-        if (!finishedRef.current) aiRespond();
+        // A student contribution in the closing window counts as their closing chance.
+        if (remainingNow() <= AI_CLOSING_AT_SECONDS) closingDone.current = true;
+        aiFailures.current = 0;
+        if (!finishedRef.current) void aiRespond("student-turn");
       } catch (error) {
         setMic("idle");
         setMicError(error instanceof Error ? error.message : "Something went wrong. Please try again.");
       }
     },
-    [addTurn, aiRespond, recorder],
+    [addTurn, aiRespond, recorder, remainingNow],
   );
 
   async function startRecording() {
@@ -163,7 +214,7 @@ export function GdRoom({
     setRecordingStartedAt(clockRef.current);
     setMic("recording");
     schedule(() => {
-      if (recordingToken.current === token) submitTurn(MAX_TURN_SECONDS);
+      if (recordingToken.current === token) void submitTurn(MAX_TURN_SECONDS);
     }, MAX_TURN_SECONDS * 1000);
   }
 
@@ -173,14 +224,35 @@ export function GdRoom({
     setMic("idle");
   }
 
-  // If the student hasn't opened the discussion, an AI participant opens it.
+  function toggleVoice() {
+    if (voiceOn) speech.cancel();
+    setVoiceOn((v) => !v);
+  }
+
+  // Keeps the discussion alive when the floor is open: an AI participant opens
+  // the GD, continues after a silence, or gives one closing synthesis.
   useEffect(() => {
-    if (phase !== "active" || turns.length > 0 || mic !== "idle" || speaking) return;
-    const id = window.setTimeout(aiRespond, AI_OPENS_AFTER_SECONDS * 1000);
+    if (phase !== "active" || mic !== "idle" || aiBusy || aiFailures.current >= MAX_AI_FAILURES) return;
+    const closingDue = inClosing && !closingDone.current;
+    if (!closingDue && aiTurnsSinceStudent(turns) >= MAX_AI_TURNS_WITHOUT_STUDENT) return;
+    const delaySeconds = closingDue
+      ? 1.5
+      : turns.length === 0
+        ? AI_OPENS_AFTER_SECONDS
+        : SILENCE_CONTINUE_SECONDS[difficulty];
+    const id = window.setTimeout(() => void aiRespond(closingDue ? "closing" : "silence"), delaySeconds * 1000);
     return () => window.clearTimeout(id);
-  }, [phase, turns.length, mic, speaking, aiRespond]);
+  }, [phase, mic, aiBusy, inClosing, turns, difficulty, aiRespond]);
 
   const studentTurns = turns.filter((t) => t.speakerType === "student").length;
+  const waitingForStudent = aiTurnsSinceStudent(turns) >= MAX_AI_TURNS_WITHOUT_STUDENT;
+
+  let hint: string;
+  if (speaking) hint = "Listen — another participant is speaking.";
+  else if (aiBusy) hint = "The participants are thinking…";
+  else if (turns.length === 0) hint = "Open the discussion, or an AI participant will start shortly.";
+  else if (waitingForStudent) hint = "The group is waiting to hear from you.";
+  else hint = `Press Speak to contribute. Keep each turn under ${MAX_TURN_SECONDS} seconds.`;
 
   return (
     <div className="space-y-5">
@@ -191,15 +263,15 @@ export function GdRoom({
           </p>
           <h1 className="mt-1 text-lg font-semibold">{topic.title}</h1>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="text-right">
-            <p className="text-xs text-muted">
-              {phase === "preparing" ? "Preparation" : phase === "finished" ? "Finished" : "Time left"}
-            </p>
-            <p className="font-mono text-2xl font-semibold tabular-nums">
-              {phase === "preparing" ? formatClock(PREP_SECONDS - clock) : formatClock(remaining)}
-            </p>
-          </div>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={toggleVoice}
+            aria-pressed={voiceOn}
+            className="rounded-lg border border-line px-3 py-2 text-sm hover:border-muted"
+          >
+            {voiceOn ? "Voices on" : "Voices off"}
+          </button>
           {phase === "active" && (
             <button
               type="button"
@@ -209,12 +281,26 @@ export function GdRoom({
               End discussion
             </button>
           )}
+          <div className="text-right">
+            <p className="text-xs text-muted">
+              {phase === "preparing" ? "Preparation" : phase === "finished" ? "Finished" : "Time left"}
+            </p>
+            <p className="font-mono text-2xl font-semibold tabular-nums">
+              {phase === "preparing" ? formatClock(PREP_SECONDS - clock) : formatClock(remaining)}
+            </p>
+          </div>
         </div>
       </div>
 
       {phase === "active" && remaining <= CLOSING_WINDOW_SECONDS && (
         <p className="rounded-lg bg-amber-100 px-4 py-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
           Less than {CLOSING_WINDOW_SECONDS} seconds left — this is a good moment to summarise the discussion.
+        </p>
+      )}
+
+      {voiceOn && speech.blocked && (
+        <p className="rounded-lg bg-amber-100 px-4 py-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          Your browser blocked the voices. Click anywhere on the page and they will play from the next turn.
         </p>
       )}
 
@@ -244,29 +330,28 @@ export function GdRoom({
             {phase === "active" && (
               <div className="space-y-3">
                 <p className="font-medium">You</p>
-                <p className="text-sm text-muted">
-                  {speaking
-                    ? "Listen — another participant is speaking."
-                    : turns.length === 0
-                      ? "Open the discussion, or an AI participant will start shortly."
-                      : `Press Speak to contribute. Keep each turn under ${MAX_TURN_SECONDS} seconds.`}
-                </p>
+                <p className="text-sm text-muted">{hint}</p>
                 <MicControl
                   state={mic}
                   elapsed={elapsed}
-                  disabled={speaking !== null}
+                  disabled={aiBusy}
                   onStart={startRecording}
-                  onSubmit={() => submitTurn(Math.max(1, elapsed))}
+                  onSubmit={() => void submitTurn(Math.max(1, elapsed))}
                   onCancel={cancelRecording}
                 />
                 {micError && (
-                  <p role="alert" className="rounded-lg bg-rose-100 px-3 py-2 text-sm text-rose-900 dark:bg-rose-950 dark:text-rose-200">
+                  <p
+                    role="alert"
+                    className="rounded-lg bg-rose-100 px-3 py-2 text-sm text-rose-900 dark:bg-rose-950 dark:text-rose-200"
+                  >
                     {micError}
                   </p>
                 )}
-                <p className="text-xs text-muted">
-                  AI participants are still in demo mode — their replies are sample lines for now.
-                </p>
+                {aiError && (
+                  <p role="status" className="rounded-lg bg-background px-3 py-2 text-sm text-muted">
+                    {aiError}
+                  </p>
+                )}
               </div>
             )}
 
