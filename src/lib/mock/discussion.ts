@@ -25,14 +25,6 @@ export const MOCK_AI_LINES: Record<PersonaId, string[]> = {
   ],
 };
 
-export const MOCK_STUDENT_LINES = [
-  "I think we should first define what success looks like here, because it changes the whole argument.",
-  "I agree with Diya, but I'd add that rural access is the biggest gap we haven't discussed.",
-  "To answer Meera's question, one example is how UPI adoption grew because it was free for users.",
-  "Um, I feel like, basically, the cost point is important, like, for small businesses especially.",
-  "So to conclude, I believe a gradual approach with clear safeguards is the most practical path.",
-];
-
 // Simple rotation for the mock. The real orchestrator will pick the next
 // speaker from the discussion state instead.
 export const MOCK_SPEAKER_ORDER: PersonaId[] = [

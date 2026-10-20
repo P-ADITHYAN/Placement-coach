@@ -1,6 +1,6 @@
-export type MicState = "idle" | "recording" | "processing";
+import { MAX_TURN_SECONDS } from "@/lib/validation/audio";
 
-export const MAX_TURN_SECONDS = 30;
+export type MicState = "idle" | "starting" | "recording" | "processing";
 
 export function MicControl({
   state,
@@ -17,11 +17,11 @@ export function MicControl({
   onSubmit: () => void;
   onCancel: () => void;
 }) {
-  if (state === "processing") {
+  if (state === "processing" || state === "starting") {
     return (
       <div className="flex items-center gap-3 text-sm text-muted" role="status">
         <span className="size-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-        Transcribing your turn…
+        {state === "starting" ? "Waiting for microphone access…" : "Transcribing your turn…"}
       </div>
     );
   }

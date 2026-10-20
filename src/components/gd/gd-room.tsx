@@ -3,18 +3,28 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PERSONAS } from "@/lib/ai/personas";
-import { MOCK_AI_LINES, MOCK_SPEAKER_ORDER, MOCK_STUDENT_LINES } from "@/lib/mock/discussion";
+import { requestTranscription } from "@/lib/audio/transcribe-client";
+import { RecorderError, type RecorderErrorKind, SILENCE_LEVEL, useRecorder } from "@/lib/audio/use-recorder";
+import { MOCK_AI_LINES, MOCK_SPEAKER_ORDER } from "@/lib/mock/discussion";
 import type { Difficulty, GdTopic, GdTurn, PersonaId } from "@/lib/types";
-import { MAX_TURN_SECONDS, MicControl, type MicState } from "./mic-control";
+import { MAX_TURN_SECONDS, MIN_AUDIO_BYTES } from "@/lib/validation/audio";
+import { MicControl, type MicState } from "./mic-control";
 import { ParticipantCard } from "./participant-card";
 import { TranscriptPanel } from "./transcript-panel";
 
 const PREP_SECONDS = 20;
 const AI_OPENS_AFTER_SECONDS = 15;
 const CLOSING_WINDOW_SECONDS = 30;
-// Mock latencies standing in for transcription and AI generation + speech.
-const MOCK_TRANSCRIBE_MS = 900;
+// Mock latency standing in for AI generation + speech until the orchestrator exists.
 const MOCK_AI_SPEAK_MS = 1800;
+
+const MIC_ERRORS: Record<RecorderErrorKind, string> = {
+  unsupported: "Your browser can't record audio. Please use a recent version of Chrome, Edge or Firefox.",
+  "permission-denied":
+    "Microphone access is blocked. Click the lock icon in the address bar, allow the microphone, then try again.",
+  "no-microphone": "No microphone was found. Connect one and try again.",
+  unknown: "The microphone couldn't be started. Please try again.",
+};
 
 function formatClock(totalSeconds: number) {
   const m = Math.floor(totalSeconds / 60);
@@ -37,8 +47,10 @@ export function GdRoom({
   const [endedEarly, setEndedEarly] = useState(false);
   const [mic, setMic] = useState<MicState>("idle");
   const [recordingStartedAt, setRecordingStartedAt] = useState(0);
+  const [micError, setMicError] = useState<string | null>(null);
   const [speaking, setSpeaking] = useState<PersonaId | null>(null);
   const [turns, setTurns] = useState<GdTurn[]>([]);
+  const recorder = useRecorder();
 
   const discussionSeconds = Math.max(0, clock - PREP_SECONDS);
   const remaining = Math.max(0, durationMinutes * 60 - discussionSeconds);
@@ -47,9 +59,10 @@ export function GdRoom({
   const elapsed = clock - recordingStartedAt;
 
   const timeouts = useRef<number[]>([]);
+  const clockRef = useRef(0);
   const finishedRef = useRef(false);
   const recordingToken = useRef(0);
-  const counters = useRef({ ai: 0, student: 0 });
+  const aiTurnCount = useRef(0);
 
   useEffect(() => {
     if (finished) return;
@@ -58,9 +71,18 @@ export function GdRoom({
   }, [finished]);
 
   useEffect(() => {
+    clockRef.current = clock;
+  }, [clock]);
+
+  // When time runs out mid-recording, discard the unfinished turn and release the mic.
+  // A turn already being transcribed is still added, since it was spoken in time.
+  useEffect(() => {
     finishedRef.current = finished;
-    if (finished) recordingToken.current++;
-  }, [finished]);
+    if (finished) {
+      recordingToken.current++;
+      recorder.cancel();
+    }
+  }, [finished, recorder]);
 
   useEffect(() => {
     const pending = timeouts.current;
@@ -76,7 +98,7 @@ export function GdRoom({
   }, []);
 
   const aiRespond = useCallback(() => {
-    const n = counters.current.ai++;
+    const n = aiTurnCount.current++;
     const personaId = MOCK_SPEAKER_ORDER[n % MOCK_SPEAKER_ORDER.length];
     const lines = MOCK_AI_LINES[personaId];
     const text = lines[Math.floor(n / MOCK_SPEAKER_ORDER.length) % lines.length];
@@ -94,23 +116,51 @@ export function GdRoom({
   }, [addTurn, schedule]);
 
   const submitTurn = useCallback(
-    (durationSeconds: number) => {
+    async (recordedSeconds: number) => {
       recordingToken.current++;
       setMic("processing");
-      schedule(() => {
+      const recording = await recorder.stop();
+      if (!recording || recording.audio.size < MIN_AUDIO_BYTES) {
         setMic("idle");
-        if (finishedRef.current) return;
-        const text = MOCK_STUDENT_LINES[counters.current.student++ % MOCK_STUDENT_LINES.length];
-        addTurn({ speakerType: "student", text, durationSeconds });
-        aiRespond();
-      }, MOCK_TRANSCRIBE_MS);
+        setMicError("We didn't catch any audio. Please try again.");
+        return;
+      }
+      if (recording.peakLevel < SILENCE_LEVEL) {
+        setMic("idle");
+        setMicError("We couldn't hear you — your microphone may be muted or too far away. Please try again.");
+        return;
+      }
+      try {
+        const { text, durationSeconds } = await requestTranscription(recording.audio);
+        // The model's timing is more precise, but never trust it past the recorded length.
+        const spoken = Math.min(durationSeconds ?? recordedSeconds, recordedSeconds);
+        addTurn({ speakerType: "student", text, durationSeconds: Math.max(1, Math.round(spoken)) });
+        setMic("idle");
+        if (!finishedRef.current) aiRespond();
+      } catch (error) {
+        setMic("idle");
+        setMicError(error instanceof Error ? error.message : "Something went wrong. Please try again.");
+      }
     },
-    [addTurn, aiRespond, schedule],
+    [addTurn, aiRespond, recorder],
   );
 
-  function startRecording() {
+  async function startRecording() {
+    setMicError(null);
+    setMic("starting");
+    try {
+      await recorder.start();
+    } catch (error) {
+      setMic("idle");
+      setMicError(MIC_ERRORS[error instanceof RecorderError ? error.kind : "unknown"]);
+      return;
+    }
+    if (finishedRef.current) {
+      recorder.cancel();
+      return;
+    }
     const token = ++recordingToken.current;
-    setRecordingStartedAt(clock);
+    setRecordingStartedAt(clockRef.current);
     setMic("recording");
     schedule(() => {
       if (recordingToken.current === token) submitTurn(MAX_TURN_SECONDS);
@@ -119,6 +169,7 @@ export function GdRoom({
 
   function cancelRecording() {
     recordingToken.current++;
+    recorder.cancel();
     setMic("idle");
   }
 
@@ -208,8 +259,13 @@ export function GdRoom({
                   onSubmit={() => submitTurn(Math.max(1, elapsed))}
                   onCancel={cancelRecording}
                 />
+                {micError && (
+                  <p role="alert" className="rounded-lg bg-rose-100 px-3 py-2 text-sm text-rose-900 dark:bg-rose-950 dark:text-rose-200">
+                    {micError}
+                  </p>
+                )}
                 <p className="text-xs text-muted">
-                  Demo mode: no real microphone yet — a sample response is used for your turn.
+                  AI participants are still in demo mode — their replies are sample lines for now.
                 </p>
               </div>
             )}
