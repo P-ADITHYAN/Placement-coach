@@ -426,8 +426,12 @@ function DiscussionRoom({ topic, difficulty, durationMinutes }: GdRoomProps) {
           </div>
         </div>
 
-        <div className="h-[28rem] lg:h-auto">
-          <TranscriptPanel turns={turns} />
+        {/* Fixed height: on wide screens the panel fills the row (matching the
+            left column) without growing it; long transcripts scroll inside. */}
+        <div className="relative h-[28rem] lg:h-auto lg:min-h-[28rem]">
+          <div className="absolute inset-0">
+            <TranscriptPanel turns={turns} />
+          </div>
         </div>
       </div>
     </div>
