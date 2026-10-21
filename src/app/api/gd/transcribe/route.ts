@@ -1,4 +1,5 @@
 import { TranscriptionError, transcribeAudio } from "@/lib/audio/transcribe";
+import { getUserId } from "@/lib/supabase/server";
 import { MAX_AUDIO_BYTES, MIN_AUDIO_BYTES, audioExtension } from "@/lib/validation/audio";
 
 function fail(status: number, error: string) {
@@ -6,6 +7,8 @@ function fail(status: number, error: string) {
 }
 
 export async function POST(request: Request) {
+  if (!(await getUserId())) return fail(401, "Please sign in again.");
+
   let audio: FormDataEntryValue | null;
   try {
     audio = (await request.formData()).get("audio");

@@ -1,9 +1,16 @@
 import Link from "next/link";
+import type { SessionSummaryRow } from "@/lib/database/sessions";
 import { getTopic } from "@/lib/mock/topics";
 import { getRubricCategory } from "@/lib/scoring/rubric";
-import type { SessionSummary } from "@/lib/types";
 
-export function HistoryTable({ sessions }: { sessions: SessionSummary[] }) {
+const dateFormat = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" });
+
+export function weakestCategory(scores: SessionSummaryRow["categoryScores"]) {
+  if (!scores?.length) return undefined;
+  return [...scores].sort((a, b) => a.score - b.score)[0];
+}
+
+export function HistoryTable({ sessions }: { sessions: SessionSummaryRow[] }) {
   if (sessions.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-line p-8 text-center">
@@ -35,14 +42,18 @@ export function HistoryTable({ sessions }: { sessions: SessionSummary[] }) {
         <tbody>
           {sessions.map((s) => (
             <tr key={s.id} className="border-b border-line last:border-0">
-              <td className="py-3 pr-4">{getTopic(s.topicId)?.title ?? "Custom topic"}</td>
-              <td className="py-3 pr-4 whitespace-nowrap text-muted">{s.date}</td>
+              <td className="py-3 pr-4">{getTopic(s.topicId)?.title ?? "Retired topic"}</td>
+              <td className="py-3 pr-4 whitespace-nowrap text-muted">{dateFormat.format(new Date(s.endedAt))}</td>
               <td className="py-3 pr-4 text-muted">{s.durationMinutes} min</td>
-              <td className="py-3 pr-4 font-semibold tabular-nums">{s.overallScore}</td>
-              <td className="py-3 pr-4 text-muted">{getRubricCategory(s.weakestCategoryId)?.name}</td>
+              <td className="py-3 pr-4 font-semibold tabular-nums">
+                {s.overallScore ?? <span className="font-normal text-muted">Not assessed</span>}
+              </td>
+              <td className="py-3 pr-4 text-muted">
+                {getRubricCategory(weakestCategory(s.categoryScores)?.categoryId ?? "")?.name ?? "—"}
+              </td>
               <td className="py-3 text-right">
-                <Link href="/gd/report?sample=1" className="text-accent hover:underline">
-                  View
+                <Link href={`/gd/report/${s.id}`} className="text-accent hover:underline">
+                  {s.overallScore === null ? "Get report" : "View"}
                 </Link>
               </td>
             </tr>

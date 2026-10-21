@@ -1,5 +1,6 @@
 import { generateAiTurn } from "@/lib/ai/orchestrator";
 import { getTopic } from "@/lib/mock/topics";
+import { getUserId } from "@/lib/supabase/server";
 import type { RespondReason, RespondRequest } from "@/lib/types";
 import { isDifficulty, parseTurns } from "@/lib/validation/discussion";
 
@@ -29,6 +30,8 @@ function parseRequest(body: unknown): RespondRequest | null {
 }
 
 export async function POST(request: Request) {
+  if (!(await getUserId())) return fail(401, "Please sign in again.");
+
   const parsed = parseRequest(await request.json().catch(() => null));
   if (!parsed) return fail(400, "Invalid discussion state.");
 

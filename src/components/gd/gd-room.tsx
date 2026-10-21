@@ -7,7 +7,6 @@ import { requestAiTurn } from "@/lib/ai/respond-client";
 import { requestTranscription } from "@/lib/audio/transcribe-client";
 import { RecorderError, type RecorderErrorKind, SILENCE_LEVEL, useRecorder } from "@/lib/audio/use-recorder";
 import { useSpeech } from "@/lib/audio/use-speech";
-import { saveSession } from "@/lib/session/local-session";
 import type { Difficulty, GdTopic, GdTurn, PersonaId, RespondReason } from "@/lib/types";
 import { MAX_TURN_SECONDS, MIN_AUDIO_BYTES } from "@/lib/validation/audio";
 import { MicControl, type MicState } from "./mic-control";
@@ -65,6 +64,8 @@ export function GdRoom({
   const [aiError, setAiError] = useState<string | null>(null);
   const [speaking, setSpeaking] = useState<PersonaId | null>(null);
   const [voiceOn, setVoiceOn] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [turns, setTurns] = useState<GdTurn[]>([]);
   const router = useRouter();
   const recorder = useRecorder();
@@ -226,17 +227,28 @@ export function GdRoom({
     setMic("idle");
   }
 
-  function openReport() {
-    const id = crypto.randomUUID();
-    saveSession({
-      id,
-      topicId: topic.id,
-      difficulty,
-      durationMinutes,
-      endedAt: new Date().toISOString(),
-      turns: turnsRef.current,
-    });
-    router.push(`/gd/report?session=${id}`);
+  async function openReport() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const response = await fetch("/api/gd/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topicId: topic.id, difficulty, durationMinutes, turns: turnsRef.current }),
+      });
+      const body = (await response.json().catch(() => ({}))) as { id?: string; error?: string };
+      if (!response.ok || !body.id) throw new Error(body.error ?? "Your discussion couldn't be saved.");
+      router.push(`/gd/report/${body.id}`);
+    } catch (error) {
+      setSaving(false);
+      setSaveError(
+        error instanceof TypeError
+          ? "Network problem — check your connection and try again."
+          : error instanceof Error
+            ? error.message
+            : "Your discussion couldn't be saved.",
+      );
+    }
   }
 
   function toggleVoice() {
@@ -379,11 +391,20 @@ export function GdRoom({
                 </p>
                 <button
                   type="button"
-                  onClick={openReport}
-                  className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                  onClick={() => void openReport()}
+                  disabled={saving || mic === "processing"}
+                  className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
                 >
-                  View your report
+                  {saving ? "Saving your discussion…" : mic === "processing" ? "Finishing your last turn…" : "View your report"}
                 </button>
+                {saveError && (
+                  <p
+                    role="alert"
+                    className="rounded-lg bg-rose-100 px-3 py-2 text-sm text-rose-900 dark:bg-rose-950 dark:text-rose-200"
+                  >
+                    {saveError} Your transcript is still here — press the button to try again.
+                  </p>
+                )}
               </div>
             )}
           </div>

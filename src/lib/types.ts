@@ -111,12 +111,3 @@ export interface GdSessionRecord {
   endedAt: string;
   turns: GdTurn[];
 }
-
-export interface SessionSummary {
-  id: string;
-  topicId: string;
-  date: string;
-  durationMinutes: number;
-  overallScore: number;
-  weakestCategoryId: string;
-}

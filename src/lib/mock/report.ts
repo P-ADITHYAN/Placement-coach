@@ -1,5 +1,5 @@
 import { RUBRIC_VERSION, weightedOverall } from "@/lib/scoring/rubric";
-import type { CategoryScore, GdReport, SessionSummary } from "@/lib/types";
+import type { CategoryScore, GdReport } from "@/lib/types";
 
 const categories: CategoryScore[] = [
   {
@@ -101,9 +101,3 @@ export const MOCK_REPORT: GdReport = {
   limitedEvidence: false,
   droppedQuotes: 0,
 };
-
-export const MOCK_HISTORY: SessionSummary[] = [
-  { id: "s3", topicId: "upi-cashless", date: "2026-10-18", durationMinutes: 5, overallScore: MOCK_REPORT.overallScore, weakestCategoryId: "critical" },
-  { id: "s2", topicId: "ai-jobs", date: "2026-10-15", durationMinutes: 5, overallScore: 66, weakestCategoryId: "communication" },
-  { id: "s1", topicId: "remote-work", date: "2026-10-12", durationMinutes: 3, overallScore: 58, weakestCategoryId: "critical" },
-];
