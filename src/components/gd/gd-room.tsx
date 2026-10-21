@@ -7,6 +7,7 @@ import { requestAiTurn } from "@/lib/ai/respond-client";
 import { requestTranscription } from "@/lib/audio/transcribe-client";
 import { RecorderError, type RecorderErrorKind, SILENCE_LEVEL, useRecorder } from "@/lib/audio/use-recorder";
 import { useSpeech } from "@/lib/audio/use-speech";
+import { getCategory } from "@/lib/topics";
 import type { Difficulty, GdTopic, GdTurn, PersonaId, RespondReason } from "@/lib/types";
 import { MAX_TURN_SECONDS, MIN_AUDIO_BYTES } from "@/lib/validation/audio";
 import { MicControl, type MicState } from "./mic-control";
@@ -302,7 +303,7 @@ function DiscussionRoom({ topic, difficulty, durationMinutes }: GdRoomProps) {
       <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="text-xs font-medium uppercase tracking-wide text-muted">
-            {topic.category} · {difficulty} · {durationMinutes} min
+            {getCategory(topic.categoryId)?.name} · {difficulty} · {durationMinutes} min
           </p>
           <h1 className="mt-1 text-lg font-semibold">{topic.title}</h1>
         </div>
@@ -359,7 +360,10 @@ function DiscussionRoom({ topic, difficulty, durationMinutes }: GdRoomProps) {
             {phase === "preparing" && (
               <div className="space-y-3">
                 <p className="font-medium">Organise your thoughts</p>
-                <p className="text-sm text-muted">{topic.prompt}</p>
+                <p className="text-sm text-muted">
+                  {topic.prompt ??
+                    "Take a clear position, then plan one reason and one real example to support it. Open strongly if you can."}
+                </p>
                 <button
                   type="button"
                   onClick={() => setClock((c) => Math.max(c, PREP_SECONDS))}

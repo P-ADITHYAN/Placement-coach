@@ -1,5 +1,5 @@
 import { generateAiTurn } from "@/lib/ai/orchestrator";
-import { getTopic } from "@/lib/mock/topics";
+import { getTopic } from "@/lib/topics";
 import { getUserId } from "@/lib/supabase/server";
 import type { RespondReason, RespondRequest } from "@/lib/types";
 import { isDifficulty, parseTurns } from "@/lib/validation/discussion";

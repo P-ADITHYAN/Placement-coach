@@ -2,6 +2,7 @@ import "server-only";
 
 import { generateJson } from "@/lib/ai/llm";
 import { PERSONAS, getPersona, isPersonaId } from "@/lib/ai/personas";
+import { getCategory } from "@/lib/topics";
 import type { AiIntent, Difficulty, GdTopic, PersonaId, RespondRequest, RespondResponse } from "@/lib/types";
 
 // Keeps each AI turn to roughly 15 seconds of speech so the student gets the floor.
@@ -93,7 +94,7 @@ Rules:
 Respond with JSON only: {"speakerId": one of ${JSON.stringify(plan.allowed)}, "intent": one of ${JSON.stringify(INTENTS)}, "text": string}`;
 
   const user = `Topic: ${topic.title}
-Context: ${topic.prompt}
+Category: ${getCategory(topic.categoryId)?.name ?? "General"}${topic.prompt ? `\nContext: ${topic.prompt}` : ""}
 Time remaining: ${Math.max(0, Math.round(request.remainingSeconds))} seconds
 
 Transcript so far:

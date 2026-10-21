@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { ReportView } from "@/components/reports/report-view";
 import { MOCK_REPORT } from "@/lib/mock/report";
-import { getTopic } from "@/lib/mock/topics";
+import { getTopic } from "@/lib/topics";
 
 export const metadata: Metadata = { title: "Sample report" };
 

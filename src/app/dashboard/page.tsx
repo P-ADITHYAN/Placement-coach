@@ -6,7 +6,7 @@ import { ScoreTrendChart, type TrendPoint } from "@/components/dashboard/score-t
 import { Card, StatTile } from "@/components/ui/card";
 import { PERSONAS } from "@/lib/ai/personas";
 import { getDisplayName, listSessions } from "@/lib/database/sessions";
-import { getTopic } from "@/lib/mock/topics";
+import { getTopic } from "@/lib/topics";
 import { RUBRIC, getRubricCategory } from "@/lib/scoring/rubric";
 
 export const metadata: Metadata = { title: "Dashboard" };

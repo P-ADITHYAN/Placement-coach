@@ -1,5 +1,5 @@
 import { getReport, getSession, saveReport } from "@/lib/database/sessions";
-import { getTopic } from "@/lib/mock/topics";
+import { getTopic } from "@/lib/topics";
 import { assessSession } from "@/lib/scoring/assess";
 import { getUserId } from "@/lib/supabase/server";
 

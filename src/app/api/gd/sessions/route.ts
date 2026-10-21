@@ -1,5 +1,5 @@
 import { saveCompletedSession } from "@/lib/database/sessions";
-import { getTopic, DURATIONS } from "@/lib/mock/topics";
+import { getTopic, DURATIONS } from "@/lib/topics";
 import { getUserId } from "@/lib/supabase/server";
 import { isDifficulty, parseTurns } from "@/lib/validation/discussion";
 

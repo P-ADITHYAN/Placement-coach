@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { PendingReport } from "@/components/reports/pending-report";
 import { ReportView } from "@/components/reports/report-view";
 import { getReport, getSession } from "@/lib/database/sessions";
-import { getTopic } from "@/lib/mock/topics";
+import { getTopic } from "@/lib/topics";
 
 export const metadata: Metadata = { title: "Your report" };
 

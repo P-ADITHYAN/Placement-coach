@@ -1,67 +1,49 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { DIFFICULTIES, DURATIONS, TOPICS } from "@/lib/mock/topics";
+import { useFormStatus } from "react-dom";
+import { startRandomGd } from "@/app/gd/setup/actions";
+import { DIFFICULTIES, DURATIONS, TOPIC_CATALOG, TOPIC_CATEGORIES } from "@/lib/topics";
 import type { Difficulty } from "@/lib/types";
 
-const CATEGORIES = ["All", ...new Set(TOPICS.map((t) => t.category))];
+function StartButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="w-full rounded-lg bg-accent px-5 py-3 font-medium text-white hover:opacity-90 disabled:opacity-60 sm:w-auto"
+    >
+      {pending ? "Picking your topic…" : "Get a random topic & start"}
+    </button>
+  );
+}
 
 export function SetupForm() {
-  const router = useRouter();
-  const [category, setCategory] = useState("All");
-  const [topicId, setTopicId] = useState(TOPICS[0].id);
   const [difficulty, setDifficulty] = useState<Difficulty>("medium");
   const [duration, setDuration] = useState<number>(5);
 
-  const visibleTopics = category === "All" ? TOPICS : TOPICS.filter((t) => t.category === category);
-
-  function start() {
-    const params = new URLSearchParams({ topic: topicId, difficulty, duration: String(duration) });
-    router.push(`/gd/session?${params}`);
-  }
-
   return (
-    <div className="space-y-8">
+    <form action={startRandomGd} className="space-y-8">
       <fieldset>
-        <legend className="mb-3 font-semibold">1. Choose a topic</legend>
-        <div className="mb-3 flex flex-wrap gap-2">
-          {CATEGORIES.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setCategory(c)}
-              className={`rounded-full border px-3 py-1 text-sm ${
-                category === c ? "border-accent bg-accent-soft text-accent" : "border-line text-muted"
-              }`}
-            >
-              {c}
-            </button>
+        <legend className="mb-1 font-semibold">1. Topic area</legend>
+        <p className="mb-3 text-sm text-muted">
+          Your topic is picked at random from {TOPIC_CATALOG.length} placement topics and revealed when the
+          discussion starts — just like a real GD. Topics you haven&apos;t practised yet come first.
+        </p>
+        <select
+          name="category"
+          defaultValue=""
+          className="w-full rounded-lg border border-line bg-background px-3 py-2.5"
+          aria-label="Topic area"
+        >
+          <option value="">Any category (all {TOPIC_CATEGORIES.length} areas)</option>
+          {TOPIC_CATEGORIES.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
           ))}
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {visibleTopics.map((t) => (
-            <label
-              key={t.id}
-              className={`cursor-pointer rounded-lg border p-4 ${
-                topicId === t.id ? "border-accent bg-accent-soft" : "border-line hover:border-muted"
-              }`}
-            >
-              <input
-                type="radio"
-                name="topic"
-                value={t.id}
-                checked={topicId === t.id}
-                onChange={() => setTopicId(t.id)}
-                className="sr-only"
-              />
-              <p className="font-medium">{t.title}</p>
-              <p className="mt-1 text-xs text-muted">
-                {t.category} · {t.difficulty}
-              </p>
-            </label>
-          ))}
-        </div>
+        </select>
       </fieldset>
 
       <fieldset>
@@ -93,27 +75,27 @@ export function SetupForm() {
         <legend className="mb-3 font-semibold">3. Duration</legend>
         <div className="flex gap-3">
           {DURATIONS.map((m) => (
-            <button
+            <label
               key={m}
-              type="button"
-              onClick={() => setDuration(m)}
-              className={`rounded-lg border px-5 py-2 ${
+              className={`cursor-pointer rounded-lg border px-5 py-2 ${
                 duration === m ? "border-accent bg-accent-soft text-accent" : "border-line"
               }`}
             >
+              <input
+                type="radio"
+                name="duration"
+                value={m}
+                checked={duration === m}
+                onChange={() => setDuration(m)}
+                className="sr-only"
+              />
               {m} min
-            </button>
+            </label>
           ))}
         </div>
       </fieldset>
 
-      <button
-        type="button"
-        onClick={start}
-        className="w-full rounded-lg bg-accent px-5 py-3 font-medium text-white hover:opacity-90 sm:w-auto"
-      >
-        Enter discussion room
-      </button>
-    </div>
+      <StartButton />
+    </form>
   );
 }

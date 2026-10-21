@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { SessionSummaryRow } from "@/lib/database/sessions";
-import { getTopic } from "@/lib/mock/topics";
+import { getTopic } from "@/lib/topics";
 import { getRubricCategory } from "@/lib/scoring/rubric";
 
 const dateFormat = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" });

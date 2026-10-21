@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { GdRoom } from "@/components/gd/gd-room";
-import { DIFFICULTIES, DURATIONS, getTopic } from "@/lib/mock/topics";
+import { DIFFICULTIES, DURATIONS, getTopic } from "@/lib/topics";
 import type { Difficulty } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Discussion room" };
@@ -37,7 +37,7 @@ async function Room({ searchParams }: Pick<PageProps<"/gd/session">, "searchPara
 
   const requestedDifficulty = first(params.difficulty);
   const difficulty: Difficulty =
-    DIFFICULTIES.find((d) => d.value === requestedDifficulty)?.value ?? topic.difficulty;
+    DIFFICULTIES.find((d) => d.value === requestedDifficulty)?.value ?? "medium";
   const requestedDuration = Number(first(params.duration));
   const duration = DURATIONS.find((d) => d === requestedDuration) ?? 5;
 

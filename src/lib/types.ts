@@ -35,12 +35,17 @@ export interface RespondResponse {
   text: string;
 }
 
+export interface TopicCategory {
+  id: string;
+  name: string;
+}
+
 export interface GdTopic {
   id: string;
+  categoryId: string;
   title: string;
-  category: string;
-  difficulty: Difficulty;
-  prompt: string;
+  /** Optional extra framing shown during preparation and given to the AI. */
+  prompt?: string;
 }
 
 export type SpeakerType = "student" | "ai";

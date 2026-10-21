@@ -190,6 +190,14 @@ export async function listSessions(limit = 50): Promise<SessionSummaryRow[]> {
   });
 }
 
+/** Topic ids the signed-in student has already practised. */
+export async function listPractisedTopicIds(): Promise<string[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("gd_sessions").select("topic_id").limit(1000);
+  if (error || !data) return [];
+  return [...new Set(data.map((row) => row.topic_id as string))];
+}
+
 export async function getDisplayName(): Promise<string> {
   const supabase = await createClient();
   const { data } = await supabase.from("profiles").select("display_name").maybeSingle();

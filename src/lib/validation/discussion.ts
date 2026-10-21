@@ -1,5 +1,5 @@
 import { isPersonaId } from "@/lib/ai/personas";
-import { DIFFICULTIES } from "@/lib/mock/topics";
+import { DIFFICULTIES } from "@/lib/topics";
 import type { Difficulty, GdTurn } from "@/lib/types";
 
 // Validation for discussion data sent by the browser (untrusted input).
