@@ -11,18 +11,18 @@ export const PERSONAS: Persona[] = [
     tests: "Whether you build on a structured argument rather than repeat it.",
     accent: { avatar: "bg-sky-600", ring: "ring-sky-500" },
     style:
-      "Calm and organised. Frames points as 'first… second…', anchors claims in a concrete example or figure, and moves the discussion to a new dimension rather than repeating.",
+      "Calm and organised. Frames points as 'first… second…', anchors claims in a concrete, well-known example, and moves the discussion to a new dimension rather than repeating.",
     voice: { gender: "male", pitch: 1.0, rate: 0.98 },
   },
   {
     id: "challenger",
     name: "Meera",
     role: "Challenger",
-    behavior: "Questions assumptions, asks for evidence and disagrees respectfully.",
+    behavior: "Questions assumptions, asks for reasons and examples, and disagrees respectfully.",
     tests: "Rebuttal skill and defending a position under pressure.",
     accent: { avatar: "bg-rose-600", ring: "ring-rose-500" },
     style:
-      "Sharp but polite. Picks the weakest assumption in the latest point, asks for evidence or offers a counter-example, and often ends with a pointed question.",
+      "Sharp but polite. Picks the weakest assumption in the latest point, asks 'why?' or for a real example, or offers a counter-example, and often ends with a pointed question.",
     voice: { gender: "female", pitch: 1.1, rate: 1.03 },
   },
   {
