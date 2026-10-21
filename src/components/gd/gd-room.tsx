@@ -44,15 +44,23 @@ function aiTurnsSinceStudent(turns: GdTurn[]) {
   return count;
 }
 
-export function GdRoom({
-  topic,
-  difficulty,
-  durationMinutes,
-}: {
+interface GdRoomProps {
   topic: GdTopic;
   difficulty: Difficulty;
   durationMinutes: number;
-}) {
+}
+
+/**
+ * Next.js keeps recently visited pages alive (React Activity), state included.
+ * Keying on bfcacheId gives every new visit (Start GD, Retry) a fresh room,
+ * while browser Back still restores the room as it was.
+ */
+export function GdRoom(props: GdRoomProps) {
+  const { bfcacheId } = useRouter();
+  return <DiscussionRoom key={bfcacheId} {...props} />;
+}
+
+function DiscussionRoom({ topic, difficulty, durationMinutes }: GdRoomProps) {
   // A single clock drives preparation, the discussion timer and recording time.
   // In the real build the server owns the session timer (blueprint phase 6).
   const [clock, setClock] = useState(0);
@@ -66,6 +74,8 @@ export function GdRoom({
   const [voiceOn, setVoiceOn] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Once saved, returning to this room (browser Back) must not save a duplicate.
+  const [savedSessionId, setSavedSessionId] = useState<string | null>(null);
   const [turns, setTurns] = useState<GdTurn[]>([]);
   const router = useRouter();
   const recorder = useRecorder();
@@ -228,6 +238,10 @@ export function GdRoom({
   }
 
   async function openReport() {
+    if (savedSessionId) {
+      router.push(`/gd/report/${savedSessionId}`);
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
@@ -238,6 +252,8 @@ export function GdRoom({
       });
       const body = (await response.json().catch(() => ({}))) as { id?: string; error?: string };
       if (!response.ok || !body.id) throw new Error(body.error ?? "Your discussion couldn't be saved.");
+      setSavedSessionId(body.id);
+      setSaving(false);
       router.push(`/gd/report/${body.id}`);
     } catch (error) {
       setSaving(false);
