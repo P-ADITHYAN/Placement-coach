@@ -1,13 +1,11 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 const MIN_PASSWORD = 8;
 
 export function LoginForm({ next }: { next: string }) {
-  const router = useRouter();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -46,8 +44,9 @@ export function LoginForm({ next }: { next: string }) {
       setMode("signin");
       return;
     }
-    router.replace(next);
-    router.refresh();
+    // Full page load, not a client navigation: pages prefetched while signed out
+    // (e.g. /dashboard -> /login) are cached and would bounce back to the login page.
+    window.location.assign(next);
   }
 
   const isSignup = mode === "signup";
