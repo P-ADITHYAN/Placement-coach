@@ -1,7 +1,7 @@
 // Shared limits for recorded student turns (checked in the browser and on the server).
-export const MAX_TURN_SECONDS = 30;
+export const MAX_TURN_SECONDS = 50;
 export const MIN_AUDIO_BYTES = 1_000;
-// ~30s of browser-recorded Opus/AAC is well under 1 MB; this leaves headroom.
+// ~50s of browser-recorded Opus/AAC is about 1 MB at most; this leaves headroom.
 export const MAX_AUDIO_BYTES = 2_000_000;
 
 const AUDIO_EXTENSIONS: Record<string, string> = {

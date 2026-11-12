@@ -10,17 +10,17 @@ import { useSpeech } from "@/lib/audio/use-speech";
 import { getCategory } from "@/lib/topics";
 import type { Difficulty, GdTopic, GdTurn, PersonaId, RespondReason } from "@/lib/types";
 import { MAX_TURN_SECONDS, MIN_AUDIO_BYTES } from "@/lib/validation/audio";
+import { FloorCountdown } from "./floor-countdown";
 import { MicControl, type MicState } from "./mic-control";
 import { ParticipantCard } from "./participant-card";
 import { TranscriptPanel } from "./transcript-panel";
 
 const PREP_SECONDS = 20;
-const AI_OPENS_AFTER_SECONDS = 15;
 const CLOSING_WINDOW_SECONDS = 30;
 // An AI participant gives one closing synthesis once this little time is left.
 const AI_CLOSING_AT_SECONDS = 40;
 // How long the floor stays open for the student before an AI participant continues.
-const SILENCE_CONTINUE_SECONDS: Record<Difficulty, number> = { easy: 14, medium: 10, hard: 7 };
+const FLOOR_OPEN_SECONDS = 5;
 // After this many AI turns in a row, wait for the student instead of continuing.
 const MAX_AI_TURNS_WITHOUT_STUDENT = 3;
 const MAX_AI_FAILURES = 2;
@@ -70,6 +70,8 @@ function DiscussionRoom({ topic, difficulty, durationMinutes }: GdRoomProps) {
   const [recordingStartedAt, setRecordingStartedAt] = useState(0);
   const [micError, setMicError] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
+  const [aiFailures, setAiFailures] = useState(0);
+  const [closingDone, setClosingDone] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [speaking, setSpeaking] = useState<PersonaId | null>(null);
   const [voiceOn, setVoiceOn] = useState(true);
@@ -96,8 +98,6 @@ function DiscussionRoom({ topic, difficulty, durationMinutes }: GdRoomProps) {
   // Source of truth for the transcript inside async callbacks.
   const turnsRef = useRef<GdTurn[]>([]);
   const aiBusyRef = useRef(false);
-  const aiFailures = useRef(0);
-  const closingDone = useRef(false);
 
   useEffect(() => {
     if (finished) return;
@@ -145,7 +145,7 @@ function DiscussionRoom({ topic, difficulty, durationMinutes }: GdRoomProps) {
       if (aiBusyRef.current || finishedRef.current) return;
       aiBusyRef.current = true;
       setAiBusy(true);
-      if (reason === "closing") closingDone.current = true;
+      if (reason === "closing") setClosingDone(true);
       try {
         const reply = await requestAiTurn({
           topicId: topic.id,
@@ -154,7 +154,7 @@ function DiscussionRoom({ topic, difficulty, durationMinutes }: GdRoomProps) {
           reason,
           turns: turnsRef.current.map(({ speakerType, personaId, text }) => ({ speakerType, personaId, text })),
         });
-        aiFailures.current = 0;
+        setAiFailures(0);
         setAiError(null);
         if (finishedRef.current) return;
         addTurn({
@@ -166,7 +166,7 @@ function DiscussionRoom({ topic, difficulty, durationMinutes }: GdRoomProps) {
         setSpeaking(reply.personaId);
         await speech.speak(reply.personaId, reply.text);
       } catch (error) {
-        aiFailures.current++;
+        setAiFailures((n) => n + 1);
         setAiError(error instanceof Error ? error.message : "The AI participants couldn't respond.");
       } finally {
         setSpeaking(null);
@@ -199,8 +199,8 @@ function DiscussionRoom({ topic, difficulty, durationMinutes }: GdRoomProps) {
         addTurn({ speakerType: "student", text, durationSeconds: Math.max(1, Math.round(spoken)) });
         setMic("idle");
         // A student contribution in the closing window counts as their closing chance.
-        if (remainingNow() <= AI_CLOSING_AT_SECONDS) closingDone.current = true;
-        aiFailures.current = 0;
+        if (remainingNow() <= AI_CLOSING_AT_SECONDS) setClosingDone(true);
+        setAiFailures(0);
         if (!finishedRef.current) void aiRespond("student-turn");
       } catch (error) {
         setMic("idle");
@@ -273,23 +273,23 @@ function DiscussionRoom({ topic, difficulty, durationMinutes }: GdRoomProps) {
     setVoiceOn((v) => !v);
   }
 
-  // Keeps the discussion alive when the floor is open: an AI participant opens
-  // the GD, continues after a silence, or gives one closing synthesis.
+  const waitingForStudent = aiTurnsSinceStudent(turns) >= MAX_AI_TURNS_WITHOUT_STUDENT;
+  const canContinue = phase === "active" && mic === "idle" && !aiBusy && aiFailures < MAX_AI_FAILURES;
+  const closingDue = canContinue && inClosing && !closingDone;
+  // The floor is open: the student has FLOOR_OPEN_SECONDS to start speaking
+  // before an AI participant opens or continues the GD.
+  const floorOpen = canContinue && !closingDue && !waitingForStudent;
+
+  // Keeps the discussion alive: after the floor has been open for 5 seconds an
+  // AI participant speaks; the closing synthesis follows almost immediately.
   useEffect(() => {
-    if (phase !== "active" || mic !== "idle" || aiBusy || aiFailures.current >= MAX_AI_FAILURES) return;
-    const closingDue = inClosing && !closingDone.current;
-    if (!closingDue && aiTurnsSinceStudent(turns) >= MAX_AI_TURNS_WITHOUT_STUDENT) return;
-    const delaySeconds = closingDue
-      ? 1.5
-      : turns.length === 0
-        ? AI_OPENS_AFTER_SECONDS
-        : SILENCE_CONTINUE_SECONDS[difficulty];
+    if (!floorOpen && !closingDue) return;
+    const delaySeconds = closingDue ? 1.5 : FLOOR_OPEN_SECONDS;
     const id = window.setTimeout(() => void aiRespond(closingDue ? "closing" : "silence"), delaySeconds * 1000);
     return () => window.clearTimeout(id);
-  }, [phase, mic, aiBusy, inClosing, turns, difficulty, aiRespond]);
+  }, [floorOpen, closingDue, turns.length, aiRespond]);
 
   const studentTurns = turns.filter((t) => t.speakerType === "student").length;
-  const waitingForStudent = aiTurnsSinceStudent(turns) >= MAX_AI_TURNS_WITHOUT_STUDENT;
 
   let hint: string;
   if (speaking) hint = "Listen — another participant is speaking.";
@@ -386,6 +386,7 @@ function DiscussionRoom({ topic, difficulty, durationMinutes }: GdRoomProps) {
                   onSubmit={() => void submitTurn(Math.max(1, elapsed))}
                   onCancel={cancelRecording}
                 />
+                {floorOpen && <FloorCountdown key={turns.length} seconds={FLOOR_OPEN_SECONDS} />}
                 {micError && (
                   <p
                     role="alert"

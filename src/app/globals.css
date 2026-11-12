@@ -38,3 +38,19 @@ body {
   background: var(--background);
   color: var(--foreground);
 }
+
+/* Shrinking bar for the GD room's "your chance to speak" countdown. */
+@keyframes floor-countdown {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [style*="floor-countdown"] {
+    animation: none !important;
+  }
+}
